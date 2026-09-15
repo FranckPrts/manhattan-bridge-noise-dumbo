@@ -27,7 +27,7 @@ export function useGeolocation() {
         setStatus('error');
         setError(err.message);
       },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 }
     );
   }, []);
 
