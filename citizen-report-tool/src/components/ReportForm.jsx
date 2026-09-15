@@ -2,41 +2,14 @@ import { useState } from 'react';
 import { useGeolocation } from '../hooks/useGeolocation.js';
 import { useAudioRecorder } from '../hooks/useAudioRecorder.js';
 import { uploadMedia } from '../lib/uploadMedia.js';
-
-const ACTIVITIES = ['sleep', 'work', 'conversation', 'relaxation', 'other', 'none'];
-const DIRECTIONS = ['north', 'south', 'east', 'west', 'unknown'];
-
-// Official channels (NYC 311, the NYC Noise Code) have no category for
-// rail/subway noise at all — residents can't file a complaint that names
-// what they're hearing. These options exist so citizen reports can.
-const SOUND_CHARACTERS = [
-  { value: 'screech_squeal', label: 'Screech / squeal' },
-  { value: 'rumble_hum', label: 'Rumble / low hum' },
-  { value: 'clatter_bang', label: 'Clatter / banging' },
-  { value: 'horn_whistle', label: 'Horn / whistle' },
-  { value: 'brakes', label: 'Brakes' },
-  { value: 'other', label: 'Other' },
-];
-
-const DURATION_PATTERNS = [
-  { value: 'sudden_burst', label: 'Sudden burst (<2s)' },
-  { value: 'few_seconds', label: 'A few seconds' },
-  { value: 'sustained', label: 'Sustained (10s+)' },
-  { value: 'continuous', label: 'Continuous / ongoing' },
-];
-
-const RECURRING_OPTIONS = [
-  { value: 'first_time', label: 'First time I noticed it' },
-  { value: 'occasional', label: 'Happens occasionally' },
-  { value: 'frequent_daily', label: 'Happens daily' },
-  { value: 'constant', label: 'Constant / ongoing problem' },
-];
-
-const BEHAVIORAL_RESPONSES = [
-  { value: 'covered_ears', label: 'Covered ears' },
-  { value: 'left_area', label: 'Left the area' },
-  { value: 'closed_windows', label: 'Closed windows' },
-];
+import {
+  ACTIVITIES,
+  DIRECTIONS,
+  SOUND_CHARACTERS,
+  DURATION_PATTERNS,
+  RECURRING_OPTIONS,
+  BEHAVIORAL_RESPONSES,
+} from '../lib/reportFields.js';
 
 function toggleValue(list, value) {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];

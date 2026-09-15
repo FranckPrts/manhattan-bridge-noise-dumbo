@@ -431,6 +431,29 @@ button.submit:hover:not(:disabled) {
   color: var(--cp-text-muted);
 }
 
+.answers {
+  margin: 0 0 12px 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  column-gap: 12px;
+  row-gap: 6px;
+}
+
+.answers-row {
+  display: contents;
+}
+
+.answers dt {
+  font-size: 0.85rem;
+  color: var(--cp-text-soft);
+}
+
+.answers dd {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--cp-text);
+}
+
 .report-media {
   display: flex;
   flex-direction: column;
