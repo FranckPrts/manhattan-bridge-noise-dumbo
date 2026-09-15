@@ -25,3 +25,7 @@ __pycache__/
 node_modules/
 package.json
 package-lock.json
+
+# Exception: allow citizen-report-tool's own package files
+!citizen-report-tool/package.json
+!citizen-report-tool/package-lock.json

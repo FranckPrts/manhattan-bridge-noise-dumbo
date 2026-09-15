@@ -1,0 +1,22 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+dist/
+.pnp
+.pnp.js
+
+# Vite build
+*.log
+.vite/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.vercel
