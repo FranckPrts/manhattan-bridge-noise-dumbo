@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useGeolocation } from '../hooks/useGeolocation.js';
 import { useAudioRecorder } from '../hooks/useAudioRecorder.js';
 import { uploadMedia } from '../lib/uploadMedia.js';
+import { analyzeAudioBlob } from '../lib/spectralAnalysis.js';
+import LiveSpectrogram from './LiveSpectrogram.jsx';
+import EventAnnotator from './EventAnnotator.jsx';
 import {
   ACTIVITIES,
   DIRECTIONS,
@@ -13,6 +16,12 @@ import {
 
 function toggleValue(list, value) {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+}
+
+function formatDuration(sec) {
+  if (sec >= 60 && sec % 60 === 0) return `${sec / 60} minute${sec === 60 ? '' : 's'}`;
+  if (sec >= 60) return `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
+  return `${sec}s`;
 }
 
 function ChipGroup({ options, selected, onToggle }) {
@@ -32,10 +41,29 @@ function ChipGroup({ options, selected, onToggle }) {
   );
 }
 
+// Mobile-friendly single-select tiles, replacing <select> dropdowns — one tap,
+// no picker wheel/menu to open.
+function TileGroup({ options, value, onSelect }) {
+  return (
+    <div className="tile-group">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          className={`tile${value === opt.value ? ' selected' : ''}`}
+          onClick={() => onSelect(opt.value)}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function ReportForm({ onSubmitted, accessToken }) {
   const [annoyance, setAnnoyance] = useState(5);
-  const [activity, setActivity] = useState(ACTIVITIES[0]);
-  const [direction, setDirection] = useState(DIRECTIONS[4]);
+  const [activity, setActivity] = useState(ACTIVITIES[0].value);
+  const [direction, setDirection] = useState(DIRECTIONS[4].value);
   const [soundCharacter, setSoundCharacter] = useState([]);
   const [durationPattern, setDurationPattern] = useState(DURATION_PATTERNS[0].value);
   const [recurring, setRecurring] = useState(RECURRING_OPTIONS[0].value);
@@ -49,6 +77,7 @@ export default function ReportForm({ onSubmitted, accessToken }) {
   const [photoUrl, setPhotoUrl] = useState(null);
   const [videoFile, setVideoFile] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
+  const audioElRef = useRef(null);
 
   const { location, status: locStatus, error: locError, requestLocation } = useGeolocation();
   const {
@@ -57,11 +86,49 @@ export default function ReportForm({ onSubmitted, accessToken }) {
     audioUrl,
     duration,
     error: audioError,
+    stream: audioStream,
+    events,
+    setEvents,
+    markStart,
+    markEnd,
+    pendingElapsedSec,
+    recordingElapsedSec,
     start: startRecording,
     stop: stopRecording,
     reset: resetRecording,
     maxDurationSec,
   } = useAudioRecorder();
+
+  const [spectralData, setSpectralData] = useState(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState(null);
+
+  useEffect(() => {
+    if (!audioBlob) {
+      setSpectralData(null);
+      setAnalyzeError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setAnalyzing(true);
+    setAnalyzeError(null);
+
+    analyzeAudioBlob(audioBlob)
+      .then((result) => {
+        if (!cancelled) setSpectralData(result);
+      })
+      .catch((err) => {
+        if (!cancelled) setAnalyzeError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setAnalyzing(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [audioBlob]);
 
   const canSubmit = location && !submitting;
 
@@ -93,6 +160,30 @@ export default function ReportForm({ onSubmitted, accessToken }) {
     setVideoUrl(null);
   };
 
+  // Press = quick tap (short range), hold = longer range — same markStart/
+  // markEnd either way. Pointer capture keeps the release event bound to
+  // this button even if a finger drags off it mid-hold, a common touchscreen
+  // failure mode for press-and-hold controls.
+  const handleHoldStart = (e) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    markStart();
+  };
+  const handleHoldEnd = (e) => {
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    markEnd();
+  };
+
+  // Lets the annotation screen play back from any clicked point on the
+  // spectrogram (or a card's ▶ button), so a citizen can confirm what a
+  // captured moment actually sounds like before categorizing it.
+  const seekAndPlay = (tSec) => {
+    if (!audioElRef.current) return;
+    audioElRef.current.currentTime = tSec;
+    audioElRef.current.play();
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!location) return;
@@ -112,6 +203,7 @@ export default function ReportForm({ onSubmitted, accessToken }) {
         windows_open: windowsOpen,
         behavioral_response: behavioralResponse,
         notes: notes.trim() || null,
+        marked_events: events.length > 0 ? events : undefined,
       };
 
       const payload = {
@@ -120,6 +212,10 @@ export default function ReportForm({ onSubmitted, accessToken }) {
         report_data: reportData,
         device: navigator.userAgent,
       };
+
+      if (spectralData) {
+        payload.spectral = spectralData;
+      }
 
       const media = [];
       if (audioBlob) {
@@ -155,8 +251,8 @@ export default function ReportForm({ onSubmitted, accessToken }) {
 
       // Reset form for next report
       setAnnoyance(5);
-      setActivity(ACTIVITIES[0]);
-      setDirection(DIRECTIONS[4]);
+      setActivity(ACTIVITIES[0].value);
+      setDirection(DIRECTIONS[4].value);
       setSoundCharacter([]);
       setDurationPattern(DURATION_PATTERNS[0].value);
       setRecurring(RECURRING_OPTIONS[0].value);
@@ -200,39 +296,23 @@ export default function ReportForm({ onSubmitted, accessToken }) {
       </div>
 
       <div className="field">
-        <label htmlFor="duration">How long did it last?</label>
-        <select id="duration" value={durationPattern} onChange={(e) => setDurationPattern(e.target.value)}>
-          {DURATION_PATTERNS.map((d) => (
-            <option key={d.value} value={d.value}>{d.label}</option>
-          ))}
-        </select>
+        <label>How long did it last?</label>
+        <TileGroup options={DURATION_PATTERNS} value={durationPattern} onSelect={setDurationPattern} />
       </div>
 
       <div className="field">
-        <label htmlFor="recurring">Is this a one-off or a pattern?</label>
-        <select id="recurring" value={recurring} onChange={(e) => setRecurring(e.target.value)}>
-          {RECURRING_OPTIONS.map((r) => (
-            <option key={r.value} value={r.value}>{r.label}</option>
-          ))}
-        </select>
+        <label>Is this a one-off or a pattern?</label>
+        <TileGroup options={RECURRING_OPTIONS} value={recurring} onSelect={setRecurring} />
       </div>
 
       <div className="field">
-        <label htmlFor="activity">What did it interrupt?</label>
-        <select id="activity" value={activity} onChange={(e) => setActivity(e.target.value)}>
-          {ACTIVITIES.map((a) => (
-            <option key={a} value={a}>{a}</option>
-          ))}
-        </select>
+        <label>What did it interrupt?</label>
+        <TileGroup options={ACTIVITIES} value={activity} onSelect={setActivity} />
       </div>
 
       <div className="field">
-        <label htmlFor="direction">Where did it seem to come from?</label>
-        <select id="direction" value={direction} onChange={(e) => setDirection(e.target.value)}>
-          {DIRECTIONS.map((d) => (
-            <option key={d} value={d}>{d}</option>
-          ))}
-        </select>
+        <label>Where did it seem to come from?</label>
+        <TileGroup options={DIRECTIONS} value={direction} onSelect={setDirection} />
       </div>
 
       <div className="field">
@@ -281,19 +361,52 @@ export default function ReportForm({ onSubmitted, accessToken }) {
       </div>
 
       <div className="field">
-        <label>Sound (optional, up to {maxDurationSec}s)</label>
+        <label>Sound (optional, up to {formatDuration(maxDurationSec)})</label>
         {audioStatus === 'idle' && (
-          <button type="button" onClick={startRecording}>● Record</button>
+          <>
+            <p className="hint">You'll have {formatDuration(maxDurationSec)} to record — plenty of time to catch the whole pass.</p>
+            <button type="button" onClick={startRecording}>● Record</button>
+          </>
         )}
         {audioStatus === 'recording' && (
-          <button type="button" onClick={stopRecording}>■ Stop</button>
+          <div className="recording-live">
+            <LiveSpectrogram stream={audioStream} />
+            <p className="hint countdown">
+              ⏱ {formatDuration(Math.max(0, Math.round(maxDurationSec - recordingElapsedSec)))} left
+            </p>
+            <p className="hint">Your only job right now: notice when it's loud. What it was comes after.</p>
+            <button
+              type="button"
+              className={`hold-button${pendingElapsedSec != null ? ' active' : ''}`}
+              onPointerDown={handleHoldStart}
+              onPointerUp={handleHoldEnd}
+              onPointerCancel={handleHoldEnd}
+            >
+              {pendingElapsedSec != null ? `🔊 Holding… ${pendingElapsedSec.toFixed(1)}s` : '🔊 Hold while it\'s loud'}
+            </button>
+            {events.length > 0 && (
+              <p className="hint">{events.length} loud moment{events.length > 1 ? 's' : ''} captured</p>
+            )}
+            <button type="button" onClick={stopRecording}>■ Stop</button>
+          </div>
         )}
         {audioStatus === 'recorded' && (
           <div className="audio-preview">
-            <audio controls src={audioUrl} />
+            <audio ref={audioElRef} controls src={audioUrl} />
             <p className="hint">{duration.toFixed(1)}s recorded</p>
+            {analyzing && <p className="hint">Analyzing sound…</p>}
+            {analyzeError && <p className="hint error">✗ Spectral analysis failed: {analyzeError}</p>}
+            {spectralData && !analyzing && (
+              <p className="hint success">
+                ✓ Sound analyzed ({spectralData.band_scheme}
+                {spectralData.event ? `, event detected ${spectralData.summary.event_duration_sec.toFixed(1)}s` : ''})
+              </p>
+            )}
             <button type="button" onClick={resetRecording}>Re-record</button>
           </div>
+        )}
+        {spectralData && !analyzing && (
+          <EventAnnotator spectral={spectralData} events={events} onEventsChange={setEvents} onSeek={seekAndPlay} />
         )}
         {audioStatus === 'error' && <p className="hint error">✗ {audioError}</p>}
       </div>

@@ -1,5 +1,19 @@
-export const ACTIVITIES = ['sleep', 'work', 'conversation', 'relaxation', 'other', 'none'];
-export const DIRECTIONS = ['north', 'south', 'east', 'west', 'unknown'];
+export const ACTIVITIES = [
+  { value: 'sleep', label: 'Sleep' },
+  { value: 'work', label: 'Work' },
+  { value: 'conversation', label: 'Conversation' },
+  { value: 'relaxation', label: 'Relaxation' },
+  { value: 'other', label: 'Other' },
+  { value: 'none', label: 'None' },
+];
+
+export const DIRECTIONS = [
+  { value: 'north', label: 'North' },
+  { value: 'south', label: 'South' },
+  { value: 'east', label: 'East' },
+  { value: 'west', label: 'West' },
+  { value: 'unknown', label: "Don't know" },
+];
 
 // Official channels (NYC 311, the NYC Noise Code) have no category for
 // rail/subway noise at all — residents can't file a complaint that names
@@ -32,6 +46,18 @@ export const BEHAVIORAL_RESPONSES = [
   { value: 'covered_ears', label: 'Covered ears' },
   { value: 'left_area', label: 'Left the area' },
   { value: 'closed_windows', label: 'Closed windows' },
+];
+
+// Per-event source/cause tag, assigned after recording (not live) to each
+// citizen-captured loud moment — separate from SOUND_CHARACTERS, which
+// describes the whole clip's acoustic quality, not what caused one moment.
+export const EVENT_TYPES = [
+  { value: 'train_passing', label: 'Train passing', icon: '🚂' },
+  { value: 'horn_whistle', label: 'Horn / whistle', icon: '📯' },
+  { value: 'screech_brakes', label: 'Screech / brakes', icon: '🔊' },
+  { value: 'siren', label: 'Siren', icon: '🚨' },
+  { value: 'construction', label: 'Construction', icon: '🔨' },
+  { value: 'other', label: 'Other', icon: '❓' },
 ];
 
 export function labelFor(options, value) {

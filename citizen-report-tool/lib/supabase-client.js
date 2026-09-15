@@ -94,6 +94,22 @@ export async function listReportsForUser(supabase, userId) {
   return data;
 }
 
+// Admin-only: every report, regardless of owner. Callers must gate this
+// behind requireAdmin — it deliberately bypasses the per-user scoping
+// listReportsForUser enforces.
+export async function listAllReports(supabase) {
+  const { data, error } = await supabase
+    .from(REPORTS_TABLE)
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw new Error(`Supabase list failed: ${error.message}`);
+  }
+
+  return data;
+}
+
 // Looks up a report and confirms it belongs to userId before returning it —
 // callers use this to authorize a delete without trusting the client.
 export async function getOwnedReport(supabase, userId, reportId) {
@@ -131,6 +147,32 @@ export async function deleteReport(supabase, userId, reportId) {
   }
 
   return true;
+}
+
+const PROFILES_TABLE = 'profiles';
+
+export async function getProfile(supabase, userId) {
+  const { data, error } = await supabase
+    .from(PROFILES_TABLE)
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Supabase profile lookup failed: ${error.message}`);
+  }
+
+  return data; // null if the user has never saved one yet
+}
+
+export async function upsertProfile(supabase, userId, profile) {
+  const { error } = await supabase
+    .from(PROFILES_TABLE)
+    .upsert({ user_id: userId, ...profile, updated_at: new Date().toISOString() });
+
+  if (error) {
+    throw new Error(`Supabase profile upsert failed: ${error.message}`);
+  }
 }
 
 export async function checkConnection(supabase) {

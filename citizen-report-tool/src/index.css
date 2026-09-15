@@ -46,6 +46,27 @@ body {
   padding: 20px;
 }
 
+.login {
+  max-width: 420px;
+  margin: 40px auto;
+}
+
+.account-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.account-bar > div {
+  display: flex;
+  gap: 8px;
+}
+
+.account-bar button {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
 
 h1 {
   font-size: 2.1rem;
@@ -204,6 +225,27 @@ li {
   font-weight: 600;
 }
 
+.profile-tab-button {
+  position: relative;
+  margin-left: auto;
+  font-size: 1.1rem;
+  padding: 8px 12px;
+}
+
+.notification-pill {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cp-danger);
+}
+
+.profile-context {
+  margin-top: 20px;
+}
+
 .report-form {
   display: flex;
   flex-direction: column;
@@ -292,6 +334,27 @@ li {
   border-color: var(--cp-accent);
 }
 
+.tile-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 8px;
+}
+
+.tile {
+  padding: 12px 8px;
+  min-height: 44px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.tile.selected {
+  background: var(--cp-accent);
+  color: #fff;
+  border-color: var(--cp-accent);
+}
+
 .file-button {
   display: inline-flex;
   align-items: center;
@@ -367,6 +430,13 @@ button.submit:hover:not(:disabled) {
   color: var(--cp-danger);
 }
 
+.hint.countdown {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--cp-text);
+  text-align: center;
+}
+
 .audio-preview {
   display: flex;
   flex-direction: column;
@@ -375,6 +445,46 @@ button.submit:hover:not(:disabled) {
 
 .audio-preview audio {
   width: 100%;
+}
+
+.recording-live {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.live-spectrogram canvas {
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+  aspect-ratio: 140 / 160;
+  border-radius: 10px;
+  border: 1px solid var(--cp-border);
+  display: block;
+  margin: 0 auto;
+}
+
+.live-spectrogram p {
+  margin: 6px 0 0 0;
+}
+
+.hold-button {
+  min-height: 64px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  background: var(--cp-surface);
+  border: 2px solid var(--cp-accent);
+  color: var(--cp-accent);
+  border-radius: 16px;
+  transition: background 0.1s, color 0.1s, transform 0.1s;
+  user-select: none;
+  touch-action: none;
+}
+
+.hold-button.active {
+  background: var(--cp-accent);
+  color: #fff;
+  transform: scale(0.98);
 }
 
 .reports-list {
@@ -454,6 +564,156 @@ button.submit:hover:not(:disabled) {
   color: var(--cp-text);
 }
 
+.spectrogram {
+  margin-bottom: 10px;
+}
+
+.spectrogram canvas {
+  /* Intrinsic width/height come from the canvas's width/height attributes,
+     which vary with clip duration and event count (SpectrogramView.jsx) —
+     height:auto lets the browser preserve that aspect ratio automatically
+     instead of a hardcoded CSS ratio that would go stale. */
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--cp-border);
+  display: block;
+  flex-shrink: 0;
+}
+
+.spectrogram.compact canvas {
+  border-radius: 6px;
+}
+
+.spectrogram canvas.clickable {
+  cursor: crosshair;
+}
+
+.spectrogram p {
+  margin: 6px 0 0 0;
+}
+
+.spectrogram-legend {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--cp-text-muted);
+}
+
+.spectrogram-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+.legend-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.event-annotator {
+  display: flex;
+  gap: 10px;
+  overflow-y: auto;
+  overflow-x: auto;
+  max-height: 560px;
+  padding: 4px;
+  border: 1px solid var(--cp-border);
+  border-radius: 12px;
+  background: var(--cp-surface-soft);
+}
+
+.event-list {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.event-card {
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.event-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.event-card-time {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.event-card-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.event-card-replay,
+.event-card-remove {
+  padding: 2px 8px;
+  font-size: 0.85rem;
+  border: none;
+  background: none;
+  color: var(--cp-text-soft);
+}
+
+.event-card-replay:hover,
+.event-card-remove:hover {
+  background: var(--cp-surface-soft);
+}
+
+.event-card-replay {
+  color: var(--cp-accent);
+}
+
+.event-card-anchor {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--cp-text-muted);
+}
+
+.level-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--cp-border);
+  overflow: hidden;
+}
+
+.level-bar-fill {
+  height: 100%;
+  background: var(--cp-accent);
+}
+
+.event-card .tile-group {
+  overflow-x: visible;
+  flex-wrap: wrap;
+}
+
+.event-card .tile {
+  flex: 0 0 auto;
+  font-size: 0.8rem;
+  padding: 8px 10px;
+  min-height: 40px;
+}
+
 .report-media {
   display: flex;
   flex-direction: column;
@@ -495,4 +755,136 @@ button.submit:hover:not(:disabled) {
   font-size: 0.85rem;
   color: var(--cp-text-soft);
   flex-shrink: 0;
+}
+
+.map-view {
+  position: relative;
+}
+
+.leaflet-container {
+  width: 100%;
+  height: 420px;
+  border-radius: 16px;
+  border: 1px solid var(--cp-border);
+}
+
+.map-popover {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  left: 12px;
+  max-width: 380px;
+  max-height: calc(100% - 24px);
+  overflow-y: auto;
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+}
+
+.map-popover-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.map-legend {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  color: var(--cp-text-muted);
+  z-index: 1000;
+}
+
+.map-legend-gradient {
+  width: 80px;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(to right, hsl(240, 90%, 45%), hsl(120, 90%, 45%), hsl(0, 90%, 45%));
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.admin-table th,
+.admin-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--cp-border);
+  white-space: nowrap;
+}
+
+.admin-table th {
+  color: var(--cp-text-soft);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.74rem;
+  letter-spacing: 0.05em;
+}
+
+.admin-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--cp-border);
+  border-radius: 16px;
+}
+
+.chart-block {
+  margin-bottom: 24px;
+  padding: 20px;
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: 16px;
+}
+
+.chart-block h2 {
+  margin-top: 0;
+}
+
+.histogram-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+}
+
+.histogram-label {
+  width: 140px;
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  color: var(--cp-text-muted);
+}
+
+.histogram-bar-track {
+  flex: 1;
+  background: var(--cp-surface-soft);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.histogram-bar-fill {
+  height: 18px;
+  background: var(--cp-accent);
+  border-radius: 4px;
+}
+
+.histogram-count {
+  width: 30px;
+  flex-shrink: 0;
+  font-size: 0.85rem;
+  color: var(--cp-text-soft);
+  text-align: right;
 }

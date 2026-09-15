@@ -1,55 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  SOUND_CHARACTERS,
-  DURATION_PATTERNS,
-  RECURRING_OPTIONS,
-  BEHAVIORAL_RESPONSES,
-  labelFor,
-  labelsFor,
-} from '../lib/reportFields.js';
-
-const KIND_ICON = { audio: '🎙️', image: '📷', video: '🎥' };
-
-function MediaItem({ item }) {
-  if (item.kind === 'audio') {
-    return <audio controls src={item.url} />;
-  }
-  if (item.kind === 'image') {
-    return <img src={item.url} alt="Report media" />;
-  }
-  if (item.kind === 'video') {
-    return <video controls src={item.url} />;
-  }
-  return null;
-}
-
-function Answers({ data }) {
-  if (!data) return null;
-
-  const rows = [
-    ['Annoyance', `${data.annoyance}/10`],
-    ['Interrupted', data.activity_interrupted],
-    ['Direction', data.perceived_direction],
-    ['Sounded like', labelsFor(SOUND_CHARACTERS, data.sound_character).join(', ') || '—'],
-    ['Duration', labelFor(DURATION_PATTERNS, data.duration_pattern)],
-    ['Pattern', labelFor(RECURRING_OPTIONS, data.recurring)],
-    ['Felt vibration', data.felt_vibration ? 'Yes' : 'No'],
-    ['Windows open', data.windows_open ? 'Yes' : 'No'],
-    ['Response', labelsFor(BEHAVIORAL_RESPONSES, data.behavioral_response).join(', ') || 'None'],
-    ['Notes', data.notes || '—'],
-  ];
-
-  return (
-    <dl className="answers">
-      {rows.map(([label, value]) => (
-        <div key={label} className="answers-row">
-          <dt>{label}</dt>
-          <dd>{value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
+import ReportDetailPanel, { KIND_ICON } from './ReportDetailPanel.jsx';
 
 export default function ReportsList({ accessToken, refreshKey }) {
   const [reports, setReports] = useState([]);
@@ -139,15 +89,7 @@ export default function ReportsList({ accessToken, refreshKey }) {
 
             {expanded && (
               <div className="report-details">
-                <p className="hint">{new Date(r.timestamp).toLocaleString()}</p>
-                <Answers data={r.report_data} />
-                {r.media?.length > 0 && (
-                  <div className="report-media">
-                    {r.media.map((item, i) => (
-                      <MediaItem key={i} item={item} />
-                    ))}
-                  </div>
-                )}
+                <ReportDetailPanel report={r} />
                 <button
                   type="button"
                   className="delete-button"

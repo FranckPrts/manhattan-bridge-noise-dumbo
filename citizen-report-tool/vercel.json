@@ -1,5 +1,8 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "devCommand": "vite --port $PORT --strictPort"
+  "devCommand": "vite --port $PORT --strictPort",
+  "rewrites": [
+    { "source": "/admin", "destination": "/index.html" }
+  ]
 }

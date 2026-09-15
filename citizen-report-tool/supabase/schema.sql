@@ -35,6 +35,29 @@ create policy "Users can delete own reports"
   on reports for delete
   using (auth.uid() = user_id);
 
+-- One row per identity, filled in voluntarily via the Profile area (separate
+-- from any single report). Captures exposure context that a report-by-report
+-- schema can't: relationship to the location, tenure, glazing, and where the
+-- person typically is when exposed. This is what makes repeat reports from
+-- the same identity usable as a longitudinal exposure panel instead of a
+-- pile of unrelated one-off complaints — see IMPLEMENTATION_NOTES.md.
+create table if not exists profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  relationship text,              -- resident | worker | regular_visitor | occasional_visitor
+  tenure text,                    -- lt_1yr | 1_5yr | 5yr_plus
+  glazing text,                   -- single | double | not_sure | na
+  typical_context text,           -- home | work | park | transit | other
+  longitudinal_consent boolean not null default false,
+  updated_at timestamptz not null default now()
+);
+
+alter table profiles enable row level security;
+
+drop policy if exists "Users can view own profile" on profiles;
+create policy "Users can view own profile"
+  on profiles for select
+  using (auth.uid() = user_id);
+
 -- Private bucket for uploaded media (audio, image, video). Files are written
 -- directly from the browser via short-lived signed upload URLs issued by
 -- POST /api/upload-url (requires a signed-in user), not proxied through a

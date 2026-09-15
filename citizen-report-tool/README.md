@@ -41,6 +41,19 @@ fresh sign-in link yourself.
 **Supabase is the current source of truth**, queried directly by this repo's
 aggregation scripts/dashboards later, or exported as needed.
 
+**Profile area:** a separate, one-time-per-identity `profiles` row, filled in
+voluntarily from the 👤 tab (a notification pill marks it incomplete). It
+captures what a per-report schema structurally can't — relationship to the
+location, tenure, glazing, and typical exposure context — plus an explicit,
+separate opt-in to link a person's reports over time for research use. This
+is grounded in another gap this repo identified: `build_cohort_model.py`
+proved the worker/visitor split is *unidentifiable* from flow data alone
+("a departure curve carries no job titles"), and nothing in this program has
+ever tested the habituation effect residents describe anecdotally
+("you get used to it") because nobody could tell if the same person's
+annoyance was declining over repeated exposure. All fields are optional and
+answered once, not per report — see `ProfileArea.jsx`.
+
 **Box (dormant):** the app was originally built against Box as the storage
 backend (`lib/box-client.js`, `api/*` calling it). That code is untouched and
 still present — the app was switched to Supabase only because Box app
@@ -57,8 +70,9 @@ that's resolved, backends can be swapped back by changing the imports in
 **1. Create the database table and storage bucket**
 
 In the Supabase SQL editor, run [`supabase/schema.sql`](./supabase/schema.sql).
-It creates the `reports` table (with a `user_id` owner column + RLS policies)
-and a private `report-media` storage bucket.
+It creates the `reports` table (with a `user_id` owner column + RLS policies),
+a `profiles` table (one row per identity, see "Profile area" below), and a
+private `report-media` storage bucket.
 
 **2. Enable Anonymous sign-ins**
 
@@ -165,7 +179,11 @@ Submit a new citizen report.
   — see the current field set below, but it can evolve without a schema migration.
 - `media`: array of `{ path, mime_type, kind, duration_sec? }`, `kind` ∈ `audio`/`image`/`video`,
   referencing files already uploaded via `/api/upload-url`. Optional.
-- `spectral`: object with `thirds` array (Phase 3). Optional.
+- `spectral`: on-device 1/12-octave filter-bank analysis of the audio clip
+  (band levels over time, baseline-relative event detection, uncalibrated
+  dBFS). Computed client-side by `src/lib/spectralAnalysis.js` — see
+  `IMPLEMENTATION_NOTES.md` for the full method and JSON shape. Optional
+  (only present when an audio clip was recorded).
 - `device`: string. Optional.
 
 **`report_data` field reference** (shape owned by the form, not enforced by the
@@ -210,9 +228,30 @@ private, so URLs expire after an hour).
 { "reports": [ { "id": "...", "report_data": {...}, "media": [{ "path": "...", "kind": "audio", "url": "https://..." }], ... } ] }
 ```
 
+### `GET /api/profile` / `PUT /api/profile`
+
+Reads or upserts the caller's own profile row (relationship, tenure,
+glazing, typical exposure context, longitudinal-research consent). All
+fields optional; `GET` returns `{ "profile": null }` before the first save.
+
 ### `GET /api/health`
 
 Confirms the Supabase connection. No side effects, no auth required.
+
+## Admin dashboard
+
+A separate, password-gated view at `/admin` — not tied to citizen (Supabase
+Auth) identity, one shared operator secret via `ADMIN_PASSWORD` in your env.
+Shows a map of all reported locations (clustered, click a cluster for a
+popover list of its reports), a raw data table across every citizen's
+reports, event-duration/recurrence histograms, an annoyance-vs-measured-level
+scatter, and a geospatial view colored by measured level. See
+`IMPLEMENTATION_NOTES.md` → "Admin dashboard" for the auth design and why
+Leaflet/OSM and hand-rolled charts were chosen over alternatives.
+
+Set `ADMIN_PASSWORD` in `.env.local` (and in Vercel's env vars for
+deployment) — no other setup needed, it's independent of the Supabase Auth
+config above.
 
 ## Verification
 
@@ -241,27 +280,50 @@ a deployed instance).
 │   ├── report.js                # POST create / DELETE — auth required
 │   ├── reports.js                # GET — list caller's own reports + signed playback URLs
 │   ├── upload-url.js            # POST — issues signed Storage upload URLs, auth required
-│   └── health.js                # GET — Supabase connectivity check, no auth
+│   ├── profile.js                # GET / PUT — caller's own profile, auth required
+│   ├── health.js                # GET — Supabase connectivity check, no auth
+│   └── admin/
+│       ├── login.js              # POST { password } → sets admin session cookie
+│       ├── logout.js             # POST — clears it
+│       └── reports.js            # GET — every report, admin-gated, service role
 ├── lib/
 │   ├── supabase-client.js      # active backend
-│   ├── require-user.js         # verifies Authorization: Bearer <token> on API routes
+│   ├── require-user.js         # verifies Authorization: Bearer <token> on citizen routes
+│   ├── require-admin.js        # verifies the admin session cookie on /api/admin/*
 │   ├── env.js                  # loads .env.local explicitly (vercel dev doesn't reliably inject it)
 │   ├── box-client.js           # dormant — kept for later
-│   └── report-schema.js        # payload validation (backend-agnostic)
+│   ├── report-schema.js        # payload validation (backend-agnostic)
+│   └── profile-schema.js       # profile payload validation (backend-agnostic)
 ├── src/
-│   ├── App.jsx                 # tab shell: New report / My reports
+│   ├── App.jsx                 # tab shell: New report / My reports / Profile
+│   ├── main.jsx                 # picks App or AdminApp by pathname
 │   ├── components/
-│   │   ├── BackupEmail.jsx      # optional email-linking banner + status
+│   │   ├── BackupEmail.jsx      # optional email-linking banner + status (lives inside ProfileArea)
+│   │   ├── ProfileArea.jsx      # exposure-context questions + backup email, behind the 👤 tab
 │   │   ├── ReportForm.jsx
-│   │   └── ReportsList.jsx      # fetches from /api/reports, media playback, delete
+│   │   ├── ReportsList.jsx      # fetches from /api/reports, media playback, delete
+│   │   ├── ReportDetailPanel.jsx # answers + spectrogram + media (shared with admin's map popover)
+│   │   └── SpectrogramView.jsx  # canvas heatmap of report.spectral
+│   ├── admin/
+│   │   ├── AdminApp.jsx          # session check → AdminLogin or AdminDashboard
+│   │   ├── AdminLogin.jsx
+│   │   ├── AdminDashboard.jsx    # section switcher
+│   │   ├── MapView.jsx           # Leaflet + clustering + popover list
+│   │   ├── RawDataTable.jsx      # sortable table, all reports
+│   │   ├── EventHistograms.jsx   # CSS-bar histograms
+│   │   ├── AnnoyanceScatter.jsx  # canvas scatter
+│   │   └── GeoSpectralOverlay.jsx # map colored by measured level
 │   ├── hooks/
 │   │   ├── useAuth.js           # anonymous sign-in on first visit, session state, linkEmail()
+│   │   ├── useProfile.js        # fetch/save the caller's profile row
 │   │   ├── useGeolocation.js
 │   │   └── useAudioRecorder.js
 │   ├── lib/
 │   │   ├── supabaseClient.js   # browser Supabase client (anon key)
-│   │   └── uploadMedia.js      # requests signed URL, uploads direct to Storage
-│   ├── main.jsx
+│   │   ├── uploadMedia.js      # requests signed URL, uploads direct to Storage
+│   │   ├── spectralAnalysis.js # on-device filter-bank spectral analysis (Phase 3)
+│   │   ├── reportFields.js     # shared questionnaire option labels (form + review)
+│   │   └── profileFields.js    # profile option labels + completeness check
 │   └── index.css
 ├── index.html
 └── verify_api.js
@@ -270,6 +332,7 @@ a deployed instance).
 ## Phase roadmap
 
 **Phase 1:** Backend auth + write/health endpoints (originally Box, now Supabase)
-**Phase 2 (current):** React form UI — annoyance/activity/direction, geolocation, direct-to-Storage media upload (audio, photo, video), anonymous device-persistent auth, "My reports" backed by the database (replay media, delete)
-**Phase 3:** On-device spectral decomposition (Web Audio API FFT → 1/3-octave bands), populating the `spectral` field
-**Phase 4:** Read & aggregate endpoint, dashboards
+**Phase 2:** React form UI — annoyance/activity/direction, geolocation, direct-to-Storage media upload (audio, photo, video), anonymous device-persistent auth, "My reports" backed by the database (replay media, delete)
+**Phase 3:** On-device spectral analysis — 1/12-octave filter-bank + envelope-follower, baseline-relative event detection, rendered as a spectrogram in "My reports"
+**Phase 4:** Admin dashboard — map + clustering, raw data table, event/recurrence histograms, annoyance-vs-level scatter, geospatial-spectral overlay. Still open: event-aligned per-band distribution view, self-serve cross-device recovery
+**Phase 5 (current):** Profile area — exposure-context questions (relationship, tenure, glazing, typical context) and longitudinal-research consent, behind a 👤 tab with an incomplete-profile pill. Still open: surfacing profile fields in the admin dashboard for cohort-level analysis
