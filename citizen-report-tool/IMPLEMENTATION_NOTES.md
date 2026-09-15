@@ -135,54 +135,109 @@ the citizen happened to press don't necessarily mark where the sound really
 was loudest. `eventWindowStats()` (`spectralAnalysis.js`) computes an
 energy-weighted mean time within the window (`barycenter_sec`, weighted by
 each frame's peak-across-bands level converted to linear power — the same
-frame data already computed, no new DSP pass), shown as a small dot on
-`SpectrogramView.jsx`'s spine, connected to the event's colored stripe by a
-short line, and as "Loudest around Xs" text on the event card for ranges
-long enough for the distinction to matter. One function, imported by both
-`SpectrogramView.jsx` (the dot) and `EventAnnotator.jsx` (the card text and
-the peak-level bar), so the two can never disagree about the same event.
+frame data already computed, no new DSP pass), plotted as the event's dot
+position on `SpectrogramView.jsx`'s minimap, and as "Loudest around Xs"
+text on the event card for ranges long enough for the distinction to
+matter. One function, imported by both files, so the two can never
+disagree about the same event.
 
-**Click to extend, shrink, or replay.** The compact spine takes clicks when
-`onEventsChange`/`onSeek` are supplied (only in `EventAnnotator.jsx` — the
-saved-report view in `ReportDetailPanel.jsx` passes neither, staying
-read-only). `nearestEdge()` finds the event whose *nearer edge* (not nearer
-interval — a click deep inside a long event, far from both edges, is left
-alone) is closest to the click; if that distance is within
-`EXTEND_THRESHOLD_PX` (14 **displayed** pixels, converted to seconds via
-the canvas's actual on-screen height — an absolute pixel budget, not a
-fraction of clip duration, so it stays a comfortable tap target whether the
-clip is 5s or the full 60s) that edge is moved to the click point. One
-formula handles both directions: clicking outside the event stretches it,
-clicking inside it shrinks it — same code path, no inside/outside
-branching. Every click also seeks the `<audio>` element (via a ref lifted
-to `ReportForm.jsx` and passed down as `onSeek`) to that exact time and
-plays it, so a citizen can listen to precisely the moment they're about to
-categorize rather than judging from the heatmap colors alone. Each event
-card also has an explicit ▶ button (seeks to `start_sec`) as an
-unambiguous alternative to clicking the spine.
+**Audit and rework: the spine and the card list were never really aligned.**
+An earlier version tried to keep `SpectrogramView.jsx`'s compact spine
+"congruent" with the card list beside it by scaling its height off a
+heuristic (`max(base, duration×px/sec, eventCount×~card-height)`), and let
+citizens tap-drag an event's edges directly on that spine (`nearestEdge()`,
+a 14-displayed-pixel grab threshold) with overlapping events split into
+side-by-side lanes (`assignLanes()`, greedy interval-graph coloring). In
+practice this didn't hold together: a stripe's Y position is strictly
+time-proportional while a card's Y position is just the sum of previous
+cards' rendered heights (which vary with content, not time) — the two only
+looked aligned when clips were short with few events. Fourteen pixels is
+also well under real fingertip precision, and lanes for 3+ overlaps
+compressed into unreadable/untappable slivers in an already-narrow gutter.
+Reworked around two changes:
 
-**Overlapping events get lanes, not overdraws.** `assignLanes()` — greedy
-interval-graph coloring, sort by `start_sec`, reuse the first lane whose
-last event already ended — gives each event a lane index; overlapping
-events render as side-by-side columns instead of one flattening the other,
-so two citizen-marked moments that happened to overlap (e.g. a horn during
-a train passing) both stay visible and independently editable. The gutter's
-width is `laneCount * LANE_W`, so it only widens when an overlap actually
-needs the room.
+- **The spine is now a fixed-size minimap, not a reading or editing
+  surface.** `compact` mode's baseline height is a constant (200px, wider
+  frequency column too — 32px, both bumped up from an initial pass that
+  looked cramped in practice) regardless of clip duration — it isn't meant
+  to be read in detail, just glanced at. Events render as small dots
+  (barycenter position, from the same `eventWindowStats()`) rather than
+  gutter stripes, so overlapping events no longer need lanes at all —
+  individually tappable via `onSelectEvent(index)`, which scrolls
+  (`scrollIntoView`) the matching card into view and briefly highlights it
+  (`.event-card.highlighted`, cleared after 1.5s) instead of pretending to
+  sit at the same visual height. `full` mode (the saved-report review in
+  `ReportDetailPanel.jsx`) keeps duration-scaled height — it's a different
+  job, meant to be actually read.
 
-**Spine height scales with content, not fixed.** Previously a flat 280/320px
-regardless of clip length or event count — with recording now up to a
-minute (see below) and events able to pile up, a fixed height either
-wasted space or crushed the time axis unreadably thin. Height is now
-`max(base, durationSec × px-per-second, eventCount × ~card-height)` (the
-last term only in `compact` mode, since that's the only place a card list
-sits beside it) — a heuristic, not true pixel-perfect scroll-sync with the
-card list, but it keeps the spine roughly as tall as what's next to it. The
-canvas's `width`/`height` **attributes** (its actual pixel buffer) now vary
-per render, so the CSS was changed from a hardcoded `aspect-ratio` (which
-would silently go stale and distort the image the moment size became
-dynamic) to `height: auto`, letting the browser derive displayed aspect
-ratio from the live attributes instead.
+  A fixed baseline height compressing up to 60s of clip into ~200px means
+  events that happen within a couple seconds of each other can land on
+  nearly the same pixel row — both unreadable and, worse, functionally
+  ambiguous to tap. `layoutDots()` computes each event's true proportional
+  position, then runs a simple forward declutter pass (sort by position,
+  push anything closer than `DOT_MIN_GAP_PX` down from its neighbor) so
+  close-together dots stay visually distinct; the canvas height only grows
+  past the 200px baseline when a genuinely dense cluster needs the room
+  (`Math.max(baseHeight, lastDotY + …)`) — the common case stays fixed-size.
+  The heatmap itself and the auto-detected event's onset/offset lines still
+  map strictly to `baseHeight` (not the possibly-taller final canvas), so
+  they never stretch out of proportion with real time just because some
+  dots needed extra room below them. Click hit-testing uses this exact same
+  decluttered layout (scaled for display size), so a dot's tap target
+  always matches where it's actually drawn, even after being nudged.
+- **Trimming moved off the canvas onto the card.** Each card has `±0.5s`
+  stepper buttons for its start and end (`adjustStart`/`adjustEnd` in
+  `EventAnnotator.jsx`, clamped to `[0, totalDuration]` and a minimum
+  duration), and the spine's only remaining interactive job is
+  click-to-seek/replay (`onSeek`) — one predictable behavior per surface
+  instead of a single gesture overloaded to mean either "listen" or "edit"
+  depending on exactly where a tap landed.
+
+Two more from the same audit: delete (✕) now requires a second tap within
+3s (`armed` state, turns into "Remove?") since it was previously one
+mis-tap away from permanently losing a captured moment with no undo; and
+category tiles inside a card are a fixed-height horizontal scroll strip
+(`.event-card-tiles`) rather than a wrapping grid, so card height stops
+varying with how many tiles happen to wrap — which is also what made the
+old alignment heuristic impossible to get right in the first place.
+
+**Superseded: the vertical minimap became a horizontal, scrollable
+timeline.** The fixed-height dot-declutter minimap above worked, but still
+fundamentally compressed up to a minute of audio into ~200px — a real
+resolution ceiling no amount of decluttering fully escapes. The fix was to
+stop compressing at all: `SpectrogramView.jsx` reverted to horizontal
+(time left-to-right, frequency bottom-to-top — the orientation it had
+before this session's vertical detour), with **width now scaling with
+clip duration at a fixed, generous px/sec** (30/sec compact, 40/sec full)
+instead of being squeezed into a fixed box. A `.spectrogram-scroll`
+wrapper (`overflow-x: auto`) lets it scroll rather than shrink. Markers
+(citizen-captured events) sit in a bottom margin band, still using the
+same `layoutMarkers()` declutter pass as before, just on the x-axis —
+worth keeping even with generous resolution, since two events a fraction
+of a second apart can still land on the same pixel column.
+
+The two scroll behaviors asked for — "scroll as it plays" and "scroll to
+a clicked marker" — turned out to be one mechanism, not two: `playbackTimeSec`
+(the real `<audio>` element's current time, tracked in `ReportForm.jsx` via
+`onTimeUpdate`/`onSeeked` and passed down through `EventAnnotator.jsx`)
+drives both a moving playhead line and an effect that keeps it centered in
+the scroll view. Playback progressing ticks this naturally; clicking a
+marker just calls `onSeek(event.start_sec)` like it always did — moving
+the real playback position is what triggers the scroll, not a separate
+scroll-to-marker code path. One source of truth, so the timeline and the
+actual audio position can never drift apart. `full` mode (the saved-report
+review, no live audio wired to it) simply doesn't receive
+`playbackTimeSec`, so it renders as a static, manually-scrollable strip —
+no special-casing needed, the effect just no-ops when the prop is absent.
+
+**Recording-time control separation.** The hold-button and the "stop
+early" control used to sit 8px apart with equal visual weight — a
+plausible mis-tap while reacting fast to an actual loud sound would end
+the whole recording early, unrecoverably. `.stop-button` is now visually
+smaller/lighter with real margin (`margin-top: 20px`) above it, and the
+two hint lines that used to stack above the hold-button (time-left +
+"notice when it's loud") were collapsed into one, so there's less reading
+competing with the actual task of listening.
 
 **Recording extended to 60s**, from 10s (`MAX_DURATION_SEC` in
 `useAudioRecorder.js`) — long enough to reliably catch a full pass, not
@@ -249,10 +304,10 @@ auto-detector's threshold crossing, and now carry a category to group by.
 
 ## Current state (Phase 1 + 2 + 3 complete)
 
-- **Backend:** Supabase (Postgres + Storage + Auth), not Box. Box integration
-  (`lib/box-client.js`) is untouched but dormant — the app switched to
-  Supabase because Box app authorization is still pending; swapping back is a
-  one-line import change in `api/report.js`/`api/health.js`.
+- **Backend:** Supabase (Postgres + Storage + Auth). The original Box
+  integration (`lib/box-client.js`) has been deleted — Box app authorization
+  never completed, and a stale deployment still invoking it was failing its
+  health check in production with `insufficient_scope`.
 - **Auth:** Supabase Anonymous Auth — silent, no login screen, no email
   required. Each report is stamped with `user_id`. Users can optionally link
   a backup email (`BackupEmail.jsx` + `useAuth().linkEmail`) for manual

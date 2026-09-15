@@ -42,6 +42,11 @@ body {
   margin: 0 auto;
 }
 
+body.admin-mode {
+  max-width: none;
+  padding: 20px 32px;
+}
+
 .app {
   padding: 20px;
 }
@@ -316,6 +321,15 @@ li {
   flex-shrink: 0;
 }
 
+.checkbox-row.disabled {
+  color: var(--cp-text-soft);
+  cursor: not-allowed;
+}
+
+.checkbox-row input[type='checkbox']:disabled {
+  cursor: not-allowed;
+}
+
 .chip-group {
   display: flex;
   flex-wrap: wrap;
@@ -478,13 +492,35 @@ button.submit:hover:not(:disabled) {
   border-radius: 16px;
   transition: background 0.1s, color 0.1s, transform 0.1s;
   user-select: none;
+  -webkit-user-select: none;
   touch-action: none;
+  /* iOS Safari's long-press callout (copy/select menu) fires around 500-700ms
+     into a hold regardless of touch-action/preventDefault — this is the one
+     reliable way to stop it hijacking a sustained press. */
+  -webkit-touch-callout: none;
 }
 
 .hold-button.active {
   background: var(--cp-accent);
   color: #fff;
   transform: scale(0.98);
+}
+
+/* Deliberately far from and visually lighter than .hold-button — reacting
+   fast to a loud, sudden sound is exactly when a mis-tap is likely, and
+   landing on Stop instead ends the whole recording early, unrecoverably. */
+.stop-button {
+  margin-top: 20px;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  border: 1px solid var(--cp-border);
+  background: none;
+  color: var(--cp-text-soft);
+  align-self: center;
+}
+
+.stop-button:hover {
+  background: var(--cp-surface-soft);
 }
 
 .reports-list {
@@ -568,26 +604,64 @@ button.submit:hover:not(:disabled) {
   margin-bottom: 10px;
 }
 
-.spectrogram canvas {
-  /* Intrinsic width/height come from the canvas's width/height attributes,
-     which vary with clip duration and event count (SpectrogramView.jsx) —
-     height:auto lets the browser preserve that aspect ratio automatically
-     instead of a hardcoded CSS ratio that would go stale. */
-  width: auto;
+/* The canvas is drawn at its natural (often wider-than-viewport) intrinsic
+   size — SpectrogramView.jsx sizes width off clip duration at a fixed
+   px/sec, deliberately not compressed to fit. This wrapper scrolls
+   horizontally instead of shrinking it down. */
+.spectrogram-scroll {
   max-width: 100%;
-  height: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  /* Scrolling this strip is meant to pan the timeline, not the page behind
+     it — pan-x plus overscroll-behavior keeps the gesture contained to this
+     element instead of chaining into the event list or the page scroll. */
+  touch-action: pan-x;
+  overscroll-behavior: contain;
   border-radius: 10px;
   border: 1px solid var(--cp-border);
-  display: block;
-  flex-shrink: 0;
 }
 
-.spectrogram.compact canvas {
+.spectrogram-inner {
+  position: relative;
+}
+
+.spectrogram-canvas-wrap {
+  position: relative;
+}
+
+.spectrogram-time-ticks {
+  position: relative;
+  margin-top: 2px;
+}
+
+.spectrogram-time-ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 0.7rem;
+  color: var(--cp-text-soft);
+  white-space: nowrap;
+}
+
+.spectrogram canvas {
+  display: block;
+}
+
+.spectrogram.compact .spectrogram-scroll {
   border-radius: 6px;
 }
 
 .spectrogram canvas.clickable {
   cursor: crosshair;
+}
+
+.playhead-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--cp-accent);
+  pointer-events: none;
 }
 
 .spectrogram p {
@@ -620,17 +694,19 @@ button.submit:hover:not(:disabled) {
   flex-shrink: 0;
 }
 
+/* Minimap on top (wide, horizontally scrollable), card list below — a
+   horizontal timeline strip doesn't pair naturally side-by-side with a
+   vertical list the way the old vertical spine did. */
 .event-annotator {
   display: flex;
+  flex-direction: column;
   gap: 10px;
-  overflow-y: auto;
-  overflow-x: auto;
-  max-height: 560px;
   padding: 4px;
   border: 1px solid var(--cp-border);
   border-radius: 12px;
   background: var(--cp-surface-soft);
 }
+
 
 .event-list {
   flex: 1;
@@ -638,6 +714,14 @@ button.submit:hover:not(:disabled) {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  max-height: 560px;
+  overflow-y: auto;
+  /* Independent of the spectrogram strip above it: this list scrolls
+     vertically on its own and doesn't chain into the page scroll once it
+     hits its own top/bottom. */
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+  padding: 4px;
 }
 
 .event-card {
@@ -648,31 +732,70 @@ button.submit:hover:not(:disabled) {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  transition: background 0.3s, border-color 0.3s;
+}
+
+.event-card.highlighted {
+  border-color: var(--cp-accent);
+  background: var(--cp-surface-soft);
+}
+
+.event-card.collapsed {
+  gap: 0;
 }
 
 .event-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
+}
+
+.event-card-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 2px;
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+
+.event-card-chevron {
+  flex-shrink: 0;
+  color: var(--cp-text-soft);
+  font-size: 0.75rem;
 }
 
 .event-card-time {
   font-weight: 600;
   font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.event-card-type-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  color: var(--cp-text-muted);
 }
 
 .event-card-actions {
   display: flex;
-  gap: 4px;
+  gap: 14px;
 }
 
 .event-card-replay,
 .event-card-remove {
-  padding: 2px 8px;
+  padding: 4px 10px;
   font-size: 0.85rem;
   border: none;
   background: none;
   color: var(--cp-text-soft);
+  min-height: 32px;
 }
 
 .event-card-replay:hover,
@@ -684,10 +807,47 @@ button.submit:hover:not(:disabled) {
   color: var(--cp-accent);
 }
 
+.event-card-remove.armed {
+  color: #fff;
+  background: var(--cp-danger);
+  border-radius: 8px;
+  font-weight: 600;
+}
+
 .event-card-anchor {
   margin: 0;
   font-size: 0.8rem;
   color: var(--cp-text-muted);
+}
+
+.event-card-steppers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.event-card-stepper {
+  display: grid;
+  grid-template-columns: 40px auto 1fr auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.event-card-stepper-label {
+  font-size: 0.8rem;
+  color: var(--cp-text-soft);
+}
+
+.event-card-stepper-value {
+  text-align: center;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.event-card-stepper button {
+  padding: 6px 8px;
+  min-height: 36px;
+  font-size: 0.8rem;
 }
 
 .level-bar {
@@ -702,9 +862,15 @@ button.submit:hover:not(:disabled) {
   background: var(--cp-accent);
 }
 
-.event-card .tile-group {
-  overflow-x: visible;
-  flex-wrap: wrap;
+/* A fixed-height horizontal scroll strip, not a wrapping grid — every card
+   ends up the same height regardless of how long a category label is or
+   how many wrap, which keeps card heights predictable (the minimap-marker
+   jump-to-card only needs to scroll to *a* position, not match one). */
+.event-card-tiles {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 6px;
 }
 
 .event-card .tile {
@@ -712,6 +878,7 @@ button.submit:hover:not(:disabled) {
   font-size: 0.8rem;
   padding: 8px 10px;
   min-height: 40px;
+  white-space: nowrap;
 }
 
 .report-media {
@@ -887,4 +1054,118 @@ button.submit:hover:not(:disabled) {
   font-size: 0.85rem;
   color: var(--cp-text-soft);
   text-align: right;
+}
+
+.mitigation-section-title {
+  margin: 24px 0 12px;
+}
+
+.mitigation-card h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mitigation-flag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--cp-text-soft);
+  border: 1px solid var(--cp-border);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.mitigation-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  font-size: 0.85rem;
+  color: var(--cp-text-muted);
+}
+
+.mitigation-actions {
+  margin-top: 10px;
+}
+
+.mitigation-legend summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.mitigation-legend ul {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  font-size: 0.85rem;
+  color: var(--cp-text-muted);
+}
+
+.mitigation-legend li {
+  margin-bottom: 8px;
+}
+
+.charts-grid,
+.mitigation-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.charts-grid .chart-block,
+.mitigation-grid .chart-block {
+  margin-bottom: 0;
+}
+
+@media (min-width: 900px) {
+  .charts-grid,
+  .mitigation-grid {
+    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  }
+}
+
+@media (min-width: 1200px) {
+  .leaflet-container {
+    height: 560px;
+  }
+}
+
+.spectral-strip {
+  position: relative;
+  margin: 10px 0 20px;
+}
+
+.spectral-strip-ticks {
+  position: relative;
+  height: 14px;
+}
+
+.spectral-strip-ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 0.7rem;
+  color: var(--cp-text-soft);
+  top: 2px;
+}
+
+.event-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.event-type-avg p {
+  margin: 0 0 4px;
+}
+
+.event-type-filter {
+  margin: 16px 0;
+  flex-wrap: wrap;
 }

@@ -361,3 +361,34 @@ export function eventWindowStats(spectral, startSec, endSec) {
     barycenter_sec: weightSum > 0 ? weightedTimeSum / weightSum : (startSec + endSec) / 2,
   };
 }
+
+// Per-band mean level within a citizen-marked event window — the "spectral
+// signature" of that one loud moment, for admin exploration
+// (EventExplorer.jsx). Also returns `relative_dbfs`, each band re-based to
+// that event's own peak = 0dB: raw dBFS is uncalibrated and per-device (see
+// IMPLEMENTATION_NOTES.md "Deferred... per-band energy distribution across
+// reports"), so comparing *shape* — where the energy sits across frequency,
+// not how loud it was — is the only cross-device/cross-report comparison
+// that's actually valid here.
+export function eventBandProfile(spectral, startSec, endSec) {
+  const { frame_times_sec: times, levels_dbfs: levels, band_centers_hz: bands } = spectral;
+  const bandCount = bands.length;
+  const sums = new Array(bandCount).fill(0);
+  let frameCount = 0;
+
+  for (let f = 0; f < times.length; f++) {
+    if (times[f] < startSec || times[f] > endSec) continue;
+    for (let b = 0; b < bandCount; b++) sums[b] += levels[f][b];
+    frameCount++;
+  }
+  if (frameCount === 0) return null;
+
+  const meanDbfs = sums.map((s) => s / frameCount);
+  const peak = Math.max(...meanDbfs);
+
+  return {
+    band_centers_hz: bands,
+    mean_dbfs: meanDbfs,
+    relative_dbfs: meanDbfs.map((v) => v - peak),
+  };
+}

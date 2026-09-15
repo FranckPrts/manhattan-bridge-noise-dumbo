@@ -1,7 +1,4 @@
 import '../lib/env.js';
-// Box CCG integration is kept in lib/box-client.js for later, but the active
-// backend is Supabase (see lib/supabase-client.js) while Box app authorization
-// is pending.
 import { getClient, insertReport, deleteReport } from '../lib/supabase-client.js';
 import { validateReport, enrichReport } from '../lib/report-schema.js';
 import { requireUser, UnauthorizedError } from '../lib/require-user.js';

@@ -67,6 +67,7 @@ export default function ReportForm({ onSubmitted, accessToken }) {
   const [soundCharacter, setSoundCharacter] = useState([]);
   const [durationPattern, setDurationPattern] = useState(DURATION_PATTERNS[0].value);
   const [recurring, setRecurring] = useState(RECURRING_OPTIONS[0].value);
+  const [outdoors, setOutdoors] = useState(false);
   const [feltVibration, setFeltVibration] = useState(false);
   const [windowsOpen, setWindowsOpen] = useState(false);
   const [behavioralResponse, setBehavioralResponse] = useState([]);
@@ -75,9 +76,12 @@ export default function ReportForm({ onSubmitted, accessToken }) {
   const [submitError, setSubmitError] = useState(null);
   const [photoFile, setPhotoFile] = useState(null);
   const [photoUrl, setPhotoUrl] = useState(null);
-  const [videoFile, setVideoFile] = useState(null);
-  const [videoUrl, setVideoUrl] = useState(null);
+  const [playbackTimeSec, setPlaybackTimeSec] = useState(0);
   const audioElRef = useRef(null);
+  // Set only when replaying a specific window (a marker or a card's ▶); a
+  // plain seek from clicking elsewhere on the spectrogram leaves this null
+  // and just plays on normally.
+  const stopAtSecRef = useRef(null);
 
   const { location, status: locStatus, error: locError, requestLocation } = useGeolocation();
   const {
@@ -146,25 +150,12 @@ export default function ReportForm({ onSubmitted, accessToken }) {
     setPhotoUrl(null);
   };
 
-  const handleVideoChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (videoUrl) URL.revokeObjectURL(videoUrl);
-    setVideoFile(file);
-    setVideoUrl(URL.createObjectURL(file));
-  };
-
-  const clearVideo = () => {
-    if (videoUrl) URL.revokeObjectURL(videoUrl);
-    setVideoFile(null);
-    setVideoUrl(null);
-  };
-
   // Press = quick tap (short range), hold = longer range — same markStart/
   // markEnd either way. Pointer capture keeps the release event bound to
   // this button even if a finger drags off it mid-hold, a common touchscreen
   // failure mode for press-and-hold controls.
   const handleHoldStart = (e) => {
+    e.preventDefault(); // blocks the ~500-700ms long-press-to-context-menu gesture from hijacking the hold
     e.currentTarget.setPointerCapture(e.pointerId);
     markStart();
   };
@@ -174,14 +165,44 @@ export default function ReportForm({ onSubmitted, accessToken }) {
     }
     markEnd();
   };
+  // Belt-and-braces: some mobile browsers still fire this after a sustained
+  // press even with touch-action: none and preventDefault() on pointerdown.
+  const suppressContextMenu = (e) => e.preventDefault();
 
   // Lets the annotation screen play back from any clicked point on the
   // spectrogram (or a card's ▶ button), so a citizen can confirm what a
-  // captured moment actually sounds like before categorizing it.
-  const seekAndPlay = (tSec) => {
-    if (!audioElRef.current) return;
-    audioElRef.current.currentTime = tSec;
-    audioElRef.current.play();
+  // captured moment actually sounds like before categorizing it. An
+  // optional `endSec` (passed for a marker tap or a card's ▶ — never for a
+  // plain click elsewhere on the trace) makes this replay just that window:
+  // onTimeUpdate below pauses playback once it's reached, so a 2s screech
+  // doesn't run on into the next 8s of clip.
+  const seekAndPlay = (startSec, endSec) => {
+    const audio = audioElRef.current;
+    if (!audio) return;
+    stopAtSecRef.current = typeof endSec === 'number' ? endSec : null;
+    audio.currentTime = startSec;
+    // Clicking a second marker/card before the first's play() has settled
+    // makes the browser reject that first promise (AbortError, "interrupted
+    // by a new load request") — harmless, but unhandled it surfaces as a
+    // console/dev-overlay error and can leave the element looking stuck.
+    // Swallowing it here is what lets rapid re-clicking always just work:
+    // seek + play, every time, regardless of what was mid-flight before.
+    audio.play().catch(() => {});
+  };
+
+  const handlePlaybackTimeUpdate = (e) => {
+    setPlaybackTimeSec(e.target.currentTime);
+    if (stopAtSecRef.current != null && e.target.currentTime >= stopAtSecRef.current) {
+      e.target.pause();
+    }
+  };
+
+  // Forget any pending stop point once playback actually pauses (whether
+  // that's us stopping it above or the citizen hitting pause themselves) —
+  // otherwise resuming with the native play button would get cut short
+  // again at a stale end time from a previous replay.
+  const handlePlaybackPause = () => {
+    stopAtSecRef.current = null;
   };
 
   const handleSubmit = async (e) => {
@@ -199,8 +220,9 @@ export default function ReportForm({ onSubmitted, accessToken }) {
         sound_character: soundCharacter,
         duration_pattern: durationPattern,
         recurring,
-        felt_vibration: feltVibration,
-        windows_open: windowsOpen,
+        outdoors,
+        felt_vibration: outdoors ? false : feltVibration,
+        windows_open: outdoors ? false : windowsOpen,
         behavioral_response: behavioralResponse,
         notes: notes.trim() || null,
         marked_events: events.length > 0 ? events : undefined,
@@ -223,9 +245,6 @@ export default function ReportForm({ onSubmitted, accessToken }) {
       }
       if (photoFile) {
         media.push(await uploadMedia(photoFile, { kind: 'image', accessToken }));
-      }
-      if (videoFile) {
-        media.push(await uploadMedia(videoFile, { kind: 'video', accessToken }));
       }
       if (media.length > 0) {
         payload.media = media;
@@ -256,13 +275,13 @@ export default function ReportForm({ onSubmitted, accessToken }) {
       setSoundCharacter([]);
       setDurationPattern(DURATION_PATTERNS[0].value);
       setRecurring(RECURRING_OPTIONS[0].value);
+      setOutdoors(false);
       setFeltVibration(false);
       setWindowsOpen(false);
       setBehavioralResponse([]);
       setNotes('');
       resetRecording();
       clearPhoto();
-      clearVideo();
     } catch (err) {
       setSubmitError(err.message);
     } finally {
@@ -317,11 +336,38 @@ export default function ReportForm({ onSubmitted, accessToken }) {
 
       <div className="field">
         <label className="checkbox-row">
-          <input type="checkbox" checked={feltVibration} onChange={(e) => setFeltVibration(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={outdoors}
+            onChange={(e) => {
+              const checked = e.target.checked;
+              setOutdoors(checked);
+              // Vibration and window state are indoor concepts — clear them
+              // rather than leaving stale checked values sitting disabled.
+              if (checked) {
+                setFeltVibration(false);
+                setWindowsOpen(false);
+              }
+            }}
+          />
+          I was outdoors
+        </label>
+        <label className={`checkbox-row${outdoors ? ' disabled' : ''}`}>
+          <input
+            type="checkbox"
+            checked={feltVibration}
+            disabled={outdoors}
+            onChange={(e) => setFeltVibration(e.target.checked)}
+          />
           I felt vibration (windows/floor rattling, structure shaking)
         </label>
-        <label className="checkbox-row">
-          <input type="checkbox" checked={windowsOpen} onChange={(e) => setWindowsOpen(e.target.checked)} />
+        <label className={`checkbox-row${outdoors ? ' disabled' : ''}`}>
+          <input
+            type="checkbox"
+            checked={windowsOpen}
+            disabled={outdoors}
+            onChange={(e) => setWindowsOpen(e.target.checked)}
+          />
           My windows were open at the time
         </label>
       </div>
@@ -372,27 +418,34 @@ export default function ReportForm({ onSubmitted, accessToken }) {
           <div className="recording-live">
             <LiveSpectrogram stream={audioStream} />
             <p className="hint countdown">
-              ⏱ {formatDuration(Math.max(0, Math.round(maxDurationSec - recordingElapsedSec)))} left
+              ⏱ {formatDuration(Math.max(0, Math.round(maxDurationSec - recordingElapsedSec)))} left — just notice when it's loud
             </p>
-            <p className="hint">Your only job right now: notice when it's loud. What it was comes after.</p>
             <button
               type="button"
               className={`hold-button${pendingElapsedSec != null ? ' active' : ''}`}
               onPointerDown={handleHoldStart}
               onPointerUp={handleHoldEnd}
               onPointerCancel={handleHoldEnd}
+              onContextMenu={suppressContextMenu}
             >
               {pendingElapsedSec != null ? `🔊 Holding… ${pendingElapsedSec.toFixed(1)}s` : '🔊 Hold while it\'s loud'}
             </button>
             {events.length > 0 && (
               <p className="hint">{events.length} loud moment{events.length > 1 ? 's' : ''} captured</p>
             )}
-            <button type="button" onClick={stopRecording}>■ Stop</button>
+            <button type="button" className="stop-button" onClick={stopRecording}>■ Stop early</button>
           </div>
         )}
         {audioStatus === 'recorded' && (
           <div className="audio-preview">
-            <audio ref={audioElRef} controls src={audioUrl} />
+            <audio
+              ref={audioElRef}
+              controls
+              src={audioUrl}
+              onTimeUpdate={handlePlaybackTimeUpdate}
+              onSeeked={(e) => setPlaybackTimeSec(e.target.currentTime)}
+              onPause={handlePlaybackPause}
+            />
             <p className="hint">{duration.toFixed(1)}s recorded</p>
             {analyzing && <p className="hint">Analyzing sound…</p>}
             {analyzeError && <p className="hint error">✗ Spectral analysis failed: {analyzeError}</p>}
@@ -406,7 +459,13 @@ export default function ReportForm({ onSubmitted, accessToken }) {
           </div>
         )}
         {spectralData && !analyzing && (
-          <EventAnnotator spectral={spectralData} events={events} onEventsChange={setEvents} onSeek={seekAndPlay} />
+          <EventAnnotator
+            spectral={spectralData}
+            events={events}
+            onEventsChange={setEvents}
+            onSeek={seekAndPlay}
+            playbackTimeSec={playbackTimeSec}
+          />
         )}
         {audioStatus === 'error' && <p className="hint error">✗ {audioError}</p>}
       </div>
@@ -422,21 +481,6 @@ export default function ReportForm({ onSubmitted, accessToken }) {
           <label className="file-button">
             📷 Add photo
             <input type="file" accept="image/*" capture="environment" onChange={handlePhotoChange} hidden />
-          </label>
-        )}
-      </div>
-
-      <div className="field">
-        <label>Video (optional)</label>
-        {videoUrl ? (
-          <div className="media-preview">
-            <video controls src={videoUrl} />
-            <button type="button" onClick={clearVideo}>Remove video</button>
-          </div>
-        ) : (
-          <label className="file-button">
-            🎥 Add video
-            <input type="file" accept="video/*" capture="environment" onChange={handleVideoChange} hidden />
           </label>
         )}
       </div>

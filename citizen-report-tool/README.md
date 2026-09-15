@@ -54,12 +54,12 @@ ever tested the habituation effect residents describe anecdotally
 annoyance was declining over repeated exposure. All fields are optional and
 answered once, not per report — see `ProfileArea.jsx`.
 
-**Box (dormant):** the app was originally built against Box as the storage
-backend (`lib/box-client.js`, `api/*` calling it). That code is untouched and
-still present — the app was switched to Supabase only because Box app
-authorization (enterprise admin approval / CCG scopes) is still pending. Once
-that's resolved, backends can be swapped back by changing the imports in
-`api/report.js` and `api/health.js`.
+**Box (removed):** the app was originally built against Box as the storage
+backend. That integration (`lib/box-client.js`) has been deleted — Box app
+authorization (enterprise admin approval / CCG scopes) never completed, and
+a stale deployment still calling it was failing its own health check in
+production. Supabase is the only backend now; reintroducing Box would mean
+rebuilding that client, not just re-adding an import.
 
 ## Setup
 
@@ -160,6 +160,7 @@ Submit a new citizen report.
     "sound_character": ["screech_squeal", "clatter_bang"],
     "duration_pattern": "few_seconds",
     "recurring": "frequent_daily",
+    "outdoors": false,
     "felt_vibration": true,
     "windows_open": true,
     "behavioral_response": ["covered_ears"],
@@ -199,6 +200,7 @@ a complaint that names what they're hearing):
 | `sound_character` | screech_squeal / rumble_hum / clatter_bang / horn_whistle / brakes / other (multi-select) | Fills the missing rail-noise taxonomy — spectral "shape" official channels don't capture |
 | `duration_pattern` | sudden_burst / few_seconds / sustained / continuous | Event envelope — never published by MTA |
 | `recurring` | first_time / occasional / frequent_daily / constant | Perceived frequency/headway, since perceived and measured headway diverge 2–3x |
+| `outdoors` | boolean | Gates `felt_vibration`/`windows_open` — both are indoor phenomena, disabled and forced `false` in the form when this is set |
 | `felt_vibration` | boolean | Bridge structure re-radiates noise as vibration — a channel no audio recording captures |
 | `windows_open` | boolean | Context for sleep-disruption reports, esp. summer |
 | `behavioral_response` | covered_ears / left_area / closed_windows (multi-select) | Distress proxy independent of self-reported annoyance |
@@ -291,7 +293,6 @@ a deployed instance).
 │   ├── require-user.js         # verifies Authorization: Bearer <token> on citizen routes
 │   ├── require-admin.js        # verifies the admin session cookie on /api/admin/*
 │   ├── env.js                  # loads .env.local explicitly (vercel dev doesn't reliably inject it)
-│   ├── box-client.js           # dormant — kept for later
 │   ├── report-schema.js        # payload validation (backend-agnostic)
 │   └── profile-schema.js       # profile payload validation (backend-agnostic)
 ├── src/

@@ -8,6 +8,15 @@ export default function AdminApp() {
   const [reports, setReports] = useState([]);
   const [error, setError] = useState(null);
 
+  // The citizen-facing form relies on body's centered, narrow max-width for
+  // mobile-first readability. The admin dashboard is a data-dense tool used
+  // on a desktop-size screen, so it opts out and uses the full viewport
+  // width instead — scoped to this page's lifetime, not a global change.
+  useEffect(() => {
+    document.body.classList.add('admin-mode');
+    return () => document.body.classList.remove('admin-mode');
+  }, []);
+
   const fetchReports = useCallback(async () => {
     setError(null);
     try {
